@@ -17,3 +17,10 @@ dependencies = [
     "scipy>=1.15.3",
     "seaborn>=0.13.2",
 ]
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["cluster_rank_summarize"]
