@@ -18,7 +18,7 @@ from cluster_rank_summarize.similarity_search import get_similar_itemsets, print
 
 load_dotenv(dotenv_path="env/.env")
 DB_PATH = os.environ.get("DB_PATH")
-DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
+LITELLM_API_KEY_SUMMARIZATION = os.environ.get("LITELLM_API_KEY_SUMMARIZATION")
 
 def train(
     TD: pd.DataFrame, 
@@ -301,9 +301,9 @@ def main():
     api_key = None
 
     if generate_advanced or generate_itemset_summarization_categorization or generate_visuals:
-        api_key = DEEPSEEK_API_KEY
+        api_key = LITELLM_API_KEY_SUMMARIZATION
         if not api_key:
-            print("Please enter your DeepSeek API key:")
+            print("Please enter your API key:")
             api_key = input().strip()
         if not api_key:
              print("No API key provided. Advanced analysis will be skipped.")

@@ -5,7 +5,6 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 import os
 import json
 from typing import Tuple
-from openai import OpenAI
 from dotenv import load_dotenv
 from litellm import completion
 
@@ -27,7 +26,7 @@ def generate_itemset_summaries(filtered_details_list, pruned_itemsets, row_id_co
     model = LLM_SUMMARIZATION
     
     if not api_key:
-        raise ValueError("DeepSeek API key is required. Set DEEPSEEK_API_KEY environment variable or pass api_key parameter.")
+        raise ValueError("API key is required. Set LITELLM_API_KEY_SUMMARIZATION environment variable or pass api_key parameter.")
 
     column_descriptions = {}
     if TD is not None:
@@ -115,7 +114,7 @@ def categorize_itemsets_by_interest_level(
     model = LLM_SUMMARIZATION
     
     if not api_key:
-        raise ValueError("DeepSeek API key is required. Set DEEPSEEK_API_KEY environment variable or pass api_key parameter.")
+        raise ValueError("API key is required. Set LITELLM_API_KEY_SUMMARIZATION environment variable or pass api_key parameter.")
 
     prompt = f"""
     # Task: Categorize Itemsets by Interest Level
@@ -217,7 +216,7 @@ class ClusterAnalysisReport:
         self.model = model or LLM_SUMMARIZATION
         
         if not self.api_key:
-            raise ValueError("DeepSeek API key is required. Set DEEPSEEK_API_KEY environment variable or pass api_key parameter.")
+            raise ValueError("API key is required. Set LITELLM_API_KEY_SUMMARIZATION environment variable or pass api_key parameter.")
         
         self.report = {
             "top_level_analysis": "",
@@ -484,7 +483,7 @@ def parse_hierarchical_clustering_results(clusters, constant_columns, pruned_ite
     return clusters_data
 
 def generate_advanced_analysis(clusters, constant_columns, pruned_itemsets, row_id_colname, api_key, TD=None):
-    """Generate an advanced analysis report using DeepSeek API"""
+    """Generate an advanced analysis report using API"""
 
     clusters_data = parse_hierarchical_clustering_results(clusters, constant_columns, pruned_itemsets, row_id_colname)
 
