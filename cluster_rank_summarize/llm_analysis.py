@@ -1,16 +1,19 @@
+import warnings
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+warnings.filterwarnings("ignore", category=FutureWarning)
+
 import os
 import json
 from typing import Tuple
-from openai import OpenAI
 from dotenv import load_dotenv
+from litellm import completion
 
-from data_preprocessing import generate_column_descriptions
-from itemset_mining import itemset_to_column_dict
+from cluster_rank_summarize.data_preprocessing import generate_column_descriptions
+from cluster_rank_summarize.itemset_mining import itemset_to_column_dict
 
 load_dotenv(dotenv_path="env/.env")
-DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
-DEEPSEEK_MODEL = os.environ.get("DEEPSEEK_MODEL", "deepseek-chat")
-DEEPSEEK_BASE_URL = os.environ.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
+LITELLM_API_KEY_SUMMARIZATION = os.environ.get("LITELLM_API_KEY_SUMMARIZATION")
+LLM_SUMMARIZATION = os.environ.get("LLM_SUMMARIZATION")
 
 def generate_itemset_summaries(filtered_details_list, pruned_itemsets, row_id_colname, api_key, TD=None):
     """
@@ -19,12 +22,11 @@ def generate_itemset_summaries(filtered_details_list, pruned_itemsets, row_id_co
     Returns:
         Markdown formatted summaries of all itemsets
     """
-    api_key = api_key or DEEPSEEK_API_KEY
-    model = DEEPSEEK_MODEL
-    base_url = DEEPSEEK_BASE_URL
+    api_key = api_key or LITELLM_API_KEY_SUMMARIZATION
+    model = LLM_SUMMARIZATION
     
     if not api_key:
-        raise ValueError("DeepSeek API key is required. Set DEEPSEEK_API_KEY environment variable or pass api_key parameter.")
+        raise ValueError("API key is required. Set LITELLM_API_KEY_SUMMARIZATION environment variable or pass api_key parameter.")
 
     column_descriptions = {}
     if TD is not None:
@@ -78,16 +80,14 @@ def generate_itemset_summaries(filtered_details_list, pruned_itemsets, row_id_co
     Do not include any explanations about your approach - just provide the final summaries.
     """
     
-    # Make the API call
-    client = OpenAI(api_key=api_key, base_url=base_url)
-    
-    response = client.chat.completions.create(
+    response = completion(
         model=model,
         messages=[
             {"role": "system", "content": "You are a data science expert specializing in data analysis and communication."},
             {"role": "user", "content": prompt},
         ],
-        stream=False
+        stream=False,
+        api_key=api_key
     )
     
     summaries = response.choices[0].message.content
@@ -110,12 +110,11 @@ def categorize_itemsets_by_interest_level(
     Returns:
         A markdown file containing the categorization of itemsets into very interesting, mildly interestiing and less interesting categories.
     """
-    api_key = api_key or DEEPSEEK_API_KEY
-    model = DEEPSEEK_MODEL
-    base_url = DEEPSEEK_BASE_URL
+    api_key = api_key or LITELLM_API_KEY_SUMMARIZATION
+    model = LLM_SUMMARIZATION
     
     if not api_key:
-        raise ValueError("DeepSeek API key is required. Set DEEPSEEK_API_KEY environment variable or pass api_key parameter.")
+        raise ValueError("API key is required. Set LITELLM_API_KEY_SUMMARIZATION environment variable or pass api_key parameter.")
 
     prompt = f"""
     # Task: Categorize Itemsets by Interest Level
@@ -149,16 +148,14 @@ def categorize_itemsets_by_interest_level(
     Important: Every itemset must be included in exactly one category. Keep the original "**Itemset X:**" format.
     """
     
-    # Make the API call
-    client = OpenAI(api_key=api_key, base_url=base_url)
-    
-    response = client.chat.completions.create(
+    response = completion(
         model=model,
         messages=[
             {"role": "system", "content": "You are a data science expert specializing in pattern analysis and interest classification."},
             {"role": "user", "content": prompt},
         ],
-        stream=False
+        stream=False,
+        api_key=api_key
     )
 
     categorized_text = response.choices[0].message.content
@@ -215,14 +212,12 @@ def categorize_itemsets_by_interest_level(
 
 class ClusterAnalysisReport:
     def __init__(self, api_key=None, model=None, base_url=None, column_descriptions=None):
-        self.api_key = api_key or DEEPSEEK_API_KEY
-        self.model = model or DEEPSEEK_MODEL
-        self.base_url = base_url or DEEPSEEK_BASE_URL
+        self.api_key = api_key or LITELLM_API_KEY_SUMMARIZATION
+        self.model = model or LLM_SUMMARIZATION
         
         if not self.api_key:
-            raise ValueError("DeepSeek API key is required. Set DEEPSEEK_API_KEY environment variable or pass api_key parameter.")
-            
-        self.client = OpenAI(api_key=self.api_key, base_url=self.base_url)
+            raise ValueError("API key is required. Set LITELLM_API_KEY_SUMMARIZATION environment variable or pass api_key parameter.")
+        
         self.report = {
             "top_level_analysis": "",
             "detailed_cluster_analysis": {},
@@ -264,13 +259,14 @@ class ClusterAnalysisReport:
         Provide a well-structered analysis with key insights.
         """
 
-        response = self.client.chat.completions.create(
+        response = completion(
             model=self.model,
             messages=[
                 {"role": "system", "content": "You are a data science expert specializing in cluster analysis and pattern recognition."},
                 {"role": "user", "content": prompt},
             ],
-            stream=False
+            stream=False,
+            api_key=self.api_key
         )
 
         self.report["top_level_analysis"] = response.choices[0].message.content
@@ -299,13 +295,14 @@ class ClusterAnalysisReport:
             
             """
             
-            response = self.client.chat.completions.create(
+            response = completion(
                 model=self.model,
                 messages=[
                     {"role": "system", "content": "You are a data science expert specializing in cluster analysis and pattern recognition."},
                     {"role": "user", "content": prompt},
                 ],
-                stream=False
+                stream=False,
+                api_key=self.api_key
             )
             
             detailed_analyses[cluster_id] = response.choices[0].message.content
@@ -333,13 +330,14 @@ class ClusterAnalysisReport:
         Provide a comparative analysis that reveals insights across the clustering structure.
         """
         
-        response = self.client.chat.completions.create(
+        response = completion(
             model=self.model,
             messages=[
                 {"role": "system", "content": "You are a data science expert specializing in cluster analysis, pattern recognition, and comparative analytics."},
                 {"role": "user", "content": prompt},
             ],
-            stream=False
+            stream=False,
+            api_key=self.api_key
         )
         
         self.report["comparative_analysis"] = response.choices[0].message.content
@@ -370,13 +368,14 @@ class ClusterAnalysisReport:
         Make the summary concise, impactful, and focused on the most valuable insights.
         """
         
-        response = self.client.chat.completions.create(
+        response = completion(
             model=self.model,
             messages=[
                 {"role": "system", "content": "You are a data science expert who specializes in translating complex analytical findings into clear, actionable business insights."},
                 {"role": "user", "content": prompt},
             ],
-            stream=False
+            stream=False,
+            api_key=self.api_key
         )
         
         self.report["executive_summary"] = response.choices[0].message.content
@@ -484,7 +483,7 @@ def parse_hierarchical_clustering_results(clusters, constant_columns, pruned_ite
     return clusters_data
 
 def generate_advanced_analysis(clusters, constant_columns, pruned_itemsets, row_id_colname, api_key, TD=None):
-    """Generate an advanced analysis report using DeepSeek API"""
+    """Generate an advanced analysis report using API"""
 
     clusters_data = parse_hierarchical_clustering_results(clusters, constant_columns, pruned_itemsets, row_id_colname)
 

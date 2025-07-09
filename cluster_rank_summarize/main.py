@@ -6,19 +6,19 @@ import polars as pl
 import pandas as pd
 from dotenv import load_dotenv
 
+from cluster_rank_summarize.data_preprocessing import prepare_data
+from cluster_rank_summarize.itemset_mining import rank_maximal_frequent_itemsets, remove_columns_with_values_common_to_all_itemsets
+from cluster_rank_summarize.clustering import cluster_hierarchically
+from cluster_rank_summarize.display_utils import print_filtered_details_list, print_itemset_details, print_hierarchical_clusters
+from cluster_rank_summarize.parameter_optimization import update_weights_with_ranking, test_learning_rate_combinations
+from cluster_rank_summarize.utils import collect_itemset_feedback, group_itemsets_by_columns
+from cluster_rank_summarize.visualization import visualize_all
+from cluster_rank_summarize.llm_analysis import generate_itemset_summaries, categorize_itemsets_by_interest_level, generate_advanced_analysis
+from cluster_rank_summarize.similarity_search import get_similar_itemsets, print_similar_itemsets, get_similar_clusters, print_similar_clusters
+
 load_dotenv(dotenv_path="env/.env")
 DB_PATH = os.environ.get("DB_PATH")
-DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
-
-from data_preprocessing import prepare_data
-from itemset_mining import rank_maximal_frequent_itemsets, remove_columns_with_values_common_to_all_itemsets
-from clustering import cluster_hierarchically
-from display_utils import print_filtered_details_list, print_itemset_details, print_hierarchical_clusters
-from parameter_optimization import update_weights_with_ranking, test_learning_rate_combinations
-from utils import collect_ranking_feedback, group_itemsets_by_columns
-from visualization import visualize_all
-from llm_analysis import generate_itemset_summaries, categorize_itemsets_by_interest_level, generate_advanced_analysis
-from similarity_search import get_similar_itemsets, print_similar_itemsets, get_similar_clusters, print_similar_clusters
+LITELLM_API_KEY_SUMMARIZATION = os.environ.get("LITELLM_API_KEY_SUMMARIZATION")
 
 def train(
     TD: pd.DataFrame, 
@@ -83,10 +83,8 @@ def train(
     print("Please review the following itemsets and provide your ranking.")
     print_filtered_details_list(filtered_details_list, pruned_itemsets, row_id_colname)
     
-    # Collect ranking feedback.
-    print("\nProvide your ranking using the itemset indices shown above.")
-    print("Enter the indices in order from most preferred to least preferred, separated by commas.")
-    ranking_order = collect_ranking_feedback(pruned_itemsets)
+    # Collect individual itemset feedback using promote/demote
+    ranking_order = collect_itemset_feedback(pruned_itemsets)
     if ranking_order is not None:
         weights, gamma = update_weights_with_ranking(pruned_itemsets, ranking_order, weights, gamma, lr_weights, lr_gamma, row_id_colname)
         pruned_itemsets = rank_maximal_frequent_itemsets(TD, weights, min_support, max_collection, gamma, row_id_colname)
@@ -303,9 +301,9 @@ def main():
     api_key = None
 
     if generate_advanced or generate_itemset_summarization_categorization or generate_visuals:
-        api_key = DEEPSEEK_API_KEY
+        api_key = LITELLM_API_KEY_SUMMARIZATION
         if not api_key:
-            print("Please enter your DeepSeek API key:")
+            print("Please enter your API key:")
             api_key = input().strip()
         if not api_key:
              print("No API key provided. Advanced analysis will be skipped.")
