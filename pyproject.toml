@@ -1,7 +1,7 @@
 [project]
 name = "clustering-project"
 version = "0.1.0"
-description = "Add your description here"
+description = "A clustering and ranking system for itemset analysis with LLM-powered summarization capabilities"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
