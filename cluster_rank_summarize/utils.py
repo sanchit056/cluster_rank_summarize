@@ -95,7 +95,6 @@ def collect_itemset_feedback(pruned_itemsets: pd.DataFrame) -> Optional[List[int
     print(f"\nRanking updated:")
     print(f"Promoted items: {promoted_items}")
     print(f"Demoted items: {demoted_items}")
-    print(new_ranking)
     
     return new_ranking
 

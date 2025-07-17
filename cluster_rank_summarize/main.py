@@ -5,13 +5,14 @@ import sqlite3
 import polars as pl
 import pandas as pd
 from dotenv import load_dotenv
+from enum import Enum
 
 from cluster_rank_summarize.data_preprocessing import prepare_data
 from cluster_rank_summarize.itemset_mining import rank_maximal_frequent_itemsets, remove_columns_with_values_common_to_all_itemsets
 from cluster_rank_summarize.clustering import cluster_hierarchically
 from cluster_rank_summarize.display_utils import print_filtered_details_list, print_itemset_details, print_hierarchical_clusters
 from cluster_rank_summarize.parameter_optimization import update_weights_with_ranking, test_learning_rate_combinations
-from cluster_rank_summarize.utils import collect_itemset_feedback, group_itemsets_by_columns
+from cluster_rank_summarize.utils import collect_itemset_feedback, collect_ranking_feedback, group_itemsets_by_columns
 from cluster_rank_summarize.visualization import visualize_all
 from cluster_rank_summarize.llm_analysis import generate_itemset_summaries, categorize_itemsets_by_interest_level, generate_advanced_analysis
 from cluster_rank_summarize.similarity_search import get_similar_itemsets, print_similar_itemsets, get_similar_clusters, print_similar_clusters
@@ -20,17 +21,37 @@ load_dotenv(dotenv_path="env/.env")
 DB_PATH = os.environ.get("DB_PATH")
 LITELLM_API_KEY_SUMMARIZATION = os.environ.get("LITELLM_API_KEY_SUMMARIZATION")
 
+class FeedbackMethod(str, Enum):
+    PROMOTE_DEMOTE = "promote_demote"
+    RANKING = "ranking"
+
 def train(
     TD: pd.DataFrame, 
     row_id_colname: str,
-    table_name: str = ''
+    table_name: str = '',
+    feedback_method: FeedbackMethod = None
 ) -> None:
     """Train the model using provided data."""
+
+    if feedback_method is not None and not isinstance(feedback_method, (str, FeedbackMethod)):
+        print(f"Invalid type for feedback_method: '{type(feedback_method).__name__}'. Expected 'str' or 'FeedbackMethod'.")
+        print("Ignoring parameter value")
+        feedback_method = None
+
+    if isinstance(feedback_method, str) and not isinstance(feedback_method, FeedbackMethod):
+        try:
+            feedback_method = FeedbackMethod(feedback_method)
+        except ValueError:
+            print(f"Invalid feedback method string '{feedback_method}'. Ignoring parameter value.")
+            feedback_method = None
 
     config_dir = "ranking_config"
     os.makedirs(config_dir, exist_ok=True)
 
     config_file = os.path.join(config_dir, f"{table_name}_config.json")
+
+    saved_feedback_method = None
+
     if os.path.exists(config_file):
         try:
             with open(config_file, "r") as f:
@@ -42,6 +63,13 @@ def train(
             gamma = config.get("gamma", 0.7)
             lr_weights = config.get("lr_weights", 0.12)
             lr_gamma = config.get("lr_gamma", 0.8)
+
+            if saved_method_str := config.get("feedback_method"):
+                try:
+                    saved_feedback_method = FeedbackMethod(saved_method_str)
+                except ValueError:
+                    print(f"Warning: Invalid feedback method '{saved_method_str}' in config. It will be ignored.")
+                    saved_feedback_method = None
 
             print("Loaded configuration from", config_file)
             
@@ -75,6 +103,25 @@ def train(
         lr_weights = 0.12
         lr_gamma = 0.8
         print("Initialized default configuration for training.")
+
+    if feedback_method is None:
+        if env_method_str := os.environ.get("FEEDBACK_METHOD"):
+            try:
+                feedback_method = FeedbackMethod(env_method_str)
+                print(f"Using feedback method from environment: {feedback_method.value}")
+            except ValueError:
+                print(f"Warning: Invalid feedback method '{env_method_str}' in environment. Falling back.")
+                feedback_method = None
+            
+        if feedback_method is None:
+            if saved_feedback_method:
+                feedback_method = saved_feedback_method
+                print(f"Using feedback method from saved config: {feedback_method.value}")
+            else:
+                feedback_method = FeedbackMethod.PROMOTE_DEMOTE
+                print(f"Using default feedback method: {feedback_method.value}")
+    else:
+        print(f"Using feedback method from parameter: {feedback_method.value}")
     
     # Obtain initial pruned maximal frequent itemsets.
     pruned_itemsets = rank_maximal_frequent_itemsets(TD, weights, min_support, max_collection, gamma, row_id_colname)
@@ -82,9 +129,19 @@ def train(
 
     print("Please review the following itemsets and provide your ranking.")
     print_filtered_details_list(filtered_details_list, pruned_itemsets, row_id_colname)
-    
-    # Collect individual itemset feedback using promote/demote
-    ranking_order = collect_itemset_feedback(pruned_itemsets)
+
+    print(f"\n{'='*60}")
+    print(f"FEEDBACK COLLECTION METHOD: {feedback_method.value}")
+    print(f"{'='*60}")
+
+    if feedback_method == FeedbackMethod.RANKING:
+        print("\nProvide your whole ranking as comma-separated indices (e.g., 2,0,1,3...):")
+        print("The first index will be ranked highest.")
+        print("Press Enter to keep the default ranking.")
+        ranking_order = collect_ranking_feedback(pruned_itemsets)
+    else:
+        ranking_order = collect_itemset_feedback(pruned_itemsets)
+
     if ranking_order is not None:
         weights, gamma = update_weights_with_ranking(pruned_itemsets, ranking_order, weights, gamma, lr_weights, lr_gamma, row_id_colname)
         pruned_itemsets = rank_maximal_frequent_itemsets(TD, weights, min_support, max_collection, gamma, row_id_colname)
@@ -92,27 +149,6 @@ def train(
 
         print("\nClustering results after weight updates:")
         print_filtered_details_list(filtered_details_list, pruned_itemsets, row_id_colname)
-    
-        # Group itemsets by columns
-        very_interesting_itemsets, mildly_interesting_itemsets, uninteresting_itemsets = (
-            group_itemsets_by_columns(filtered_details_list, pruned_itemsets, row_id_colname)
-        )
-
-        # Calculate unassigned items
-        all_assigned_items = set()
-        for _, row in pruned_itemsets.iterrows():
-            all_assigned_items.update(row[row_id_colname])
-            
-        all_items = set(TD[row_id_colname]) if row_id_colname in TD.columns else set(TD.index)
-        unassigned_items = list(all_items - all_assigned_items)
-        
-        print_itemset_details(
-            very_interesting_itemsets, 
-            mildly_interesting_itemsets, 
-            uninteresting_itemsets, 
-            unassigned_items, 
-            row_id_colname
-        )
 
     config_file = os.path.join(config_dir, f"{table_name}_config.json")
     final_config = {
@@ -121,7 +157,8 @@ def train(
         "max_collection": max_collection,
         "gamma": gamma,
         "lr_weights": lr_weights,
-        "lr_gamma": lr_gamma
+        "lr_gamma": lr_gamma,
+        "feedback_method": feedback_method.value
     }
     with open(config_file, "w") as f:
         json.dump(final_config, f, indent=4)
